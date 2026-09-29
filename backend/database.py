@@ -1,12 +1,14 @@
 import os
 
+from dotenv import load_dotenv
 from sqlalchemy import create_engine
 from sqlalchemy.orm import DeclarativeBase, sessionmaker
 
+load_dotenv()
 
 DATABASE_URL = os.getenv(
     "DATABASE_URL",
-    "postgresql+psycopg2://postgres:postgres@127.0.0.1:5432/springvyra",
+    "postgresql+pg8000://postgres:postgres@127.0.0.1:5432/spring_recharge",
 )
 
 
