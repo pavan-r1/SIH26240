@@ -60,7 +60,7 @@ class ObservationBase(BaseModel):
     water_level: float
     vegetation_condition: str
     nearby_land_use: str
-    validation_status: Literal["PENDING"] = "PENDING"
+    validation_status: Literal["PENDING", "VALIDATED", "REJECTED", "NEEDS_REVIEW"] = "PENDING"
     latitude: float = Field(ge=-90, le=90)
     longitude: float = Field(ge=-180, le=180)
     notes: str | None = None

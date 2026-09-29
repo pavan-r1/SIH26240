@@ -1,4 +1,9 @@
 import os
+import re
+from datetime import datetime
+from json import loads
+from urllib.parse import urlencode
+from urllib.request import urlopen
 from fastapi import Depends, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import func, select
@@ -187,12 +192,64 @@ def dashboard(db: Session = Depends(get_db)):
     spring_statuses = {s.data_status for s in springs}
     data_status = "DEMO" if spring_statuses == {"DEMO"} else "LATEST AVAILABLE" if spring_statuses and spring_statuses <= {"FIELD", "IMPORTED"} else "UNVERIFIED" if springs else "NO DATA"
     features = [{"type": "Feature", "geometry": item["geometry"], "properties": {k: v for k, v in item.items() if k != "geometry"}} for item in [zone_dict(db, z) for z in zones] if item["geometry"]]
-    return {"total_springs": len(springs), "active_springs": sum(s.status.lower() == "active" for s in springs), "active_zones": sum(z.suitability_class.upper() in ("HIGH", "VERY HIGH") for z in zones), "average_suitability": round(sum(scores) / len(scores), 1) if scores else None, "model_confidence": round(sum(confidence) / len(confidence), 1) if confidence else None, "data_status": data_status, "springs": [schemas.SpringRead.model_validate(s).model_dump() for s in springs[:8]], "zones": features, "weather_status": "NOT CONFIGURED"}
+    return {"total_springs": len(springs), "active_springs": sum(s.status.lower() == "active" for s in springs), "active_zones": sum(z.suitability_class.upper() in ("HIGH", "VERY HIGH") for z in zones), "average_suitability": round(sum(scores) / len(scores), 1) if scores else None, "model_confidence": round(sum(confidence) / len(confidence), 1) if confidence else None, "data_status": data_status, "springs": [schemas.SpringRead.model_validate(s).model_dump() for s in springs[:8]], "zones": features, "weather_status": "AVAILABLE" if os.getenv("WEATHER_API_KEY") else "NOT CONFIGURED"}
+
+
+@app.get("/api/dashboard/summary")
+def dashboard_summary(db: Session = Depends(get_db)):
+    summary = dashboard(db)
+    observations = db.scalars(select(models.FieldObservation)).all()
+    measurements = db.scalars(select(models.SpringMeasurement)).all()
+    return {**summary, "seasonal_springs": sum(s.status.casefold() == "seasonal" for s in db.scalars(select(models.Spring)).all()), "monitored_springs": len({m.spring_id for m in measurements}), "pending_field_validations": sum(o.validation_status in {"PENDING", "NEEDS_REVIEW"} for o in observations), "data_completeness": 61, "prototype_notice": "Dashboard summary includes DEMO records and prototype completeness only."}
+
+
+@app.get("/api/model/feedback")
+def model_feedback():
+    return {"status": "PROTOTYPE", "steps": ["Environmental data", "Prototype suitability analysis", "Intervention candidate", "Field validation", "Monitoring measurements", "Validation results", "Future model improvement"], "message": "Validated field observations and subsequent spring measurements can evaluate and improve future model outputs. Automatic retraining is not active."}
 
 
 @app.get("/api/weather")
 def weather_status():
-    return {"status": "NOT CONFIGURED", "message": "Weather data source is not configured."}
+    api_key = os.getenv("WEATHER_API_KEY")
+    if not api_key:
+        return {"status": "NOT CONFIGURED", "message": "Weather data source is not configured."}
+    query = urlencode({"lat": 30.1264, "lon": 78.3120, "units": "metric", "appid": api_key})
+    try:
+        with urlopen(f"https://api.openweathermap.org/data/2.5/weather?{query}", timeout=8) as response:
+            weather = loads(response.read().decode("utf-8"))
+    except Exception:
+        return {"status": "UNAVAILABLE", "message": "Weather provider could not be reached."}
+    details = weather.get("main", {})
+    condition = (weather.get("weather") or [{}])[0]
+    return {"status": "AVAILABLE", "message": "Current weather source connected.", "location": weather.get("name", "Study area"), "temperature_c": details.get("temp"), "humidity_percent": details.get("humidity"), "condition": condition.get("description"), "wind_speed_mps": (weather.get("wind") or {}).get("speed"), "data_status": "EXTERNAL API"}
+
+
+@app.get("/api/recharge/analysis")
+@app.get("/api/recharge/suitability")
+def recharge_analysis(db: Session = Depends(get_db)):
+    zones = db.scalars(select(models.RechargeZone).order_by(models.RechargeZone.zone_code)).all()
+    zone_rows = [{"zone_code": zone.zone_code, "suitability_score": zone.suitability_score, "suitability_class": zone.suitability_class, "confidence": None, "uncertainty": "High", "data_status": "DEMO", "validation_status": "FIELD VALIDATION REQUIRED"} for zone in zones]
+    return {"status": "PROTOTYPE", "model_name": "Prototype suitability model", "disclaimer": "Decision-support only. Predictions require authoritative environmental data, field validation and expert review.", "field_validation_required": True, "suitability_score": 82, "confidence_score": 76, "data_completeness": 61, "uncertainty": "High", "factors": [{"name": "Elevation", "contribution": 72}, {"name": "Slope", "contribution": 64}, {"name": "Drainage", "contribution": 58}, {"name": "Rainfall", "contribution": 54}, {"name": "Geology", "contribution": 49}, {"name": "Fracture density", "contribution": 43}, {"name": "Land use", "contribution": 35}, {"name": "Spring discharge", "contribution": 31}], "zones": zone_rows, "layers": [{"name": "Spring locations", "key": "springs", "available": True, "status": "DEMO"}, {"name": "Recharge suitability", "key": "suitability", "available": True, "status": "PROTOTYPE"}, {"name": "Geology", "key": "geology", "available": False, "status": "NOT CONFIGURED"}, {"name": "Slope", "key": "slope", "available": False, "status": "NOT CONFIGURED"}, {"name": "Drainage", "key": "drainage", "available": False, "status": "NOT CONFIGURED"}, {"name": "Rainfall", "key": "rainfall", "available": True, "status": "EXTERNAL API"}, {"name": "Land use", "key": "land-use", "available": False, "status": "NOT CONFIGURED"}, {"name": "Fault/fracture", "key": "fracture", "available": False, "status": "NOT CONFIGURED"}, {"name": "Risk", "key": "risk", "available": True, "status": "DEMO"}], "feedback_loop": ["Environmental data", "Prototype analysis", "Suitability output", "Intervention candidate", "Field validation", "Monitoring measurements", "Validation results", "Future model improvement"]}
+
+
+@app.get("/api/interventions/priorities")
+def intervention_priorities():
+    return {"status": "PROTOTYPE", "disclaimer": "Prototype prioritisation only. Field validation required before any intervention decision.", "items": [{"rank": 1, "site_code": "INT-DEMO-001", "latitude": 30.1264, "longitude": 78.312, "suitability": 82, "risk_level": "LOW", "confidence": 76, "recommended_intervention": "Recharge pit", "reason": "High prototype suitability with manageable slope screening.", "validation_status": "PENDING FIELD VALIDATION"}, {"rank": 2, "site_code": "INT-DEMO-002", "latitude": 30.1432, "longitude": 78.3395, "suitability": 74, "risk_level": "MODERATE", "confidence": 70, "recommended_intervention": "Contour trench", "reason": "Moderate prototype suitability; verify drainage and land ownership.", "validation_status": "PENDING FIELD VALIDATION"}, {"rank": 3, "site_code": "INT-DEMO-003", "latitude": 30.1774, "longitude": 78.358, "suitability": 42, "risk_level": "HIGH", "confidence": 55, "recommended_intervention": "Not recommended", "reason": "Prototype screening flags excessive slope and incomplete geology data.", "validation_status": "PENDING FIELD VALIDATION"}]}
+
+
+@app.get("/api/risks")
+def risks():
+    return {"status": "PROTOTYPE", "disclaimer": "Risk screening is demonstrative and requires authoritative layers and expert review.", "items": [{"site_code": "INT-DEMO-001", "slope_risk": "LOW", "landslide_risk": "MODERATE", "flood_risk": "LOW", "geological_risk": "LOW", "overall": "FIELD VALIDATION REQUIRED", "reason": "No authoritative slope, landslide, flood, or geology layers are connected."}, {"site_code": "INT-DEMO-002", "slope_risk": "MODERATE", "landslide_risk": "MODERATE", "flood_risk": "LOW", "geological_risk": "UNKNOWN", "overall": "FIELD VALIDATION REQUIRED", "reason": "Geology and drainage layers are not configured."}, {"site_code": "INT-DEMO-003", "slope_risk": "HIGH", "landslide_risk": "HIGH", "flood_risk": "MODERATE", "geological_risk": "UNKNOWN", "overall": "NOT RECOMMENDED IN PROTOTYPE SCREEN", "reason": "High slope screening combined with missing authoritative geology data."}]}
+
+
+@app.get("/api/model/predictions")
+def model_predictions():
+    return {"status": "PROTOTYPE", "model_name": "Prototype suitability model", "message": "No trained or validated ML model is active. Values are demonstration outputs only.", "field_validation_required": True, "predictions": []}
+
+
+@app.get("/api/reports/summary")
+def report_summary(db: Session = Depends(get_db)):
+    return {"status": "AVAILABLE", "report_type": "Watershed assessment prototype", "generated_at": datetime.utcnow().isoformat() + "Z", "study_area": "Spring network demonstration area", "dashboard": dashboard(db), "priority_interventions": intervention_priorities()["items"], "risk_screening": risks()["items"], "limitations": ["Seeded spring and zone values are DEMO DATA.", "No authoritative DEM, geology, slope, drainage, land-use, or fracture layers are connected.", "Prototype suitability and risk values are not scientifically validated."], "validation_status": "FIELD VALIDATION REQUIRED", "disclaimer": "Decision-support output. Final intervention decisions require authoritative datasets, field validation and qualified expert review."}
 
 
 @app.get("/api/recharge/readiness")
@@ -238,12 +295,13 @@ def create_intervention(item: schemas.InterventionCreate, db: Session = Depends(
 
 @app.get("/api/risk-analysis")
 def risk_analysis_status():
-    return {"status": "NOT AVAILABLE", "risks": [], "missing_parameters": ["terrain stability", "flood hazard", "geology", "accessibility", "protected-area boundaries"], "message": "Risk analysis is unavailable until authoritative spatial layers are configured."}
+    return risks()
 
 
 @app.get("/api/reports/status")
-def report_status():
-    return {"status": "NOT CONFIGURED", "message": "PDF report generation is not configured. No report was created."}
+def report_status(db: Session = Depends(get_db)):
+    report = report_summary(db)
+    return {"status": report["status"], "message": "Structured JSON watershed assessment is available. PDF generation is not configured.", "disclaimer": report["disclaimer"], "limitations": report["limitations"]}
 
 
 @app.get("/api/data-sources")
@@ -262,6 +320,17 @@ def create_data_source(item: schemas.DataSourceCreate, db: Session = Depends(get
 def assistant_query(request: schemas.AssistantQuery, db: Session = Depends(get_db)):
     """Small allow-listed data lookup; no model, arbitrary SQL, or write actions."""
     q = request.question.casefold()
+    if "pending" in q or "validation" in q:
+        rows = db.scalars(select(models.FieldObservation).where(models.FieldObservation.validation_status.in_(["PENDING", "NEEDS_REVIEW"])).order_by(models.FieldObservation.id.desc())).all()
+        return {"answer": f"{len(rows)} field observations require validation review. These records do not approve an intervention.", "data_status": "DEMO" if rows and all(row.data_status == "DEMO" for row in rows) else "FIELD", "results": [{"id": row.id, "spring_id": row.spring_id, "validation_status": row.validation_status, "data_status": row.data_status} for row in rows], "actions": []}
+    if "active" in q:
+        rows = db.scalars(select(models.Spring).where(models.Spring.status.ilike("active")).order_by(models.Spring.spring_code)).all()
+        return {"answer": f"Active springs: {', '.join(row.name for row in rows) or 'none found'}.", "data_status": "DEMO" if rows and all(row.data_status == "DEMO" for row in rows) else "UNVERIFIED", "results": [{"id": row.id, "name": row.name, "spring_code": row.spring_code, "data_status": row.data_status} for row in rows], "actions": []}
+    elevation_match = re.search(r"(?:above|over|higher than)\s+(\d+(?:\.\d+)?)", q)
+    if elevation_match:
+        elevation = float(elevation_match.group(1))
+        rows = db.scalars(select(models.Spring).where(models.Spring.elevation > elevation).order_by(models.Spring.elevation.desc())).all()
+        return {"answer": f"{len(rows)} spring records are above {elevation:g} m: {', '.join(row.name for row in rows) or 'none found'}.", "data_status": "DEMO" if rows and all(row.data_status == "DEMO" for row in rows) else "UNVERIFIED", "results": [{"id": row.id, "name": row.name, "elevation": row.elevation, "data_status": row.data_status} for row in rows], "actions": []}
     if any(term in q for term in ("weather", "rain", "rainfall")):
         return {"answer": "Weather data source is not configured.", "data_status": "NOT CONFIGURED", "actions": []}
     if "discharge" in q:

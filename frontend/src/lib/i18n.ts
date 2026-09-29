@@ -1,9 +1,10 @@
-export type Language = "en" | "hi" | "ne";
+export type Language = "en" | "hi" | "ne" | "kn";
 
 export const languageNames: Record<Language, string> = {
   en: "English",
   hi: "हिन्दी",
   ne: "नेपाली",
+  kn: "ಕನ್ನಡ",
 };
 
 const copy = {
@@ -66,6 +67,26 @@ const copy = {
     unverifiedData: "अपुष्ट डाटा",
     apiUnavailable: "डेमो डाटा · API उपलब्ध छैन",
     apiConnected: "डेमो डाटा · API जोडिएको छ",
+  },
+  kn: {
+    workspace: "ಕಾರ್ಯಸ್ಥಳ",
+    monitoredSprings: "ಮೇಲ್ವಿಚಾರಣೆಯಲ್ಲಿರುವ ಬುಗ್ಗೆಗಳು",
+    priorityZones: "ಪ್ರಾಥಮಿಕ ರೀಚಾರ್ಜ್ ಪ್ರದೇಶಗಳು",
+    meanSuitability: "ಸರಾಸರಿ ಸೂಕ್ತತೆ",
+    modelConfidence: "ಮಾದರಿ ವಿಶ್ವಾಸ",
+    demoRecords: "ಡೆಮೊ ದಾಖಲೆಗಳು",
+    storedRecords: "ಸಂಗ್ರಹಿತ ದಾಖಲೆಗಳು",
+    listedActive: "ಸಕ್ರಿಯವಾಗಿ ಪಟ್ಟಿ ಮಾಡಲಾಗಿದೆ",
+    noBoundaries: "ನಕ್ಷೆ ಗಡಿಗಳು ಲಭ್ಯವಿಲ್ಲ",
+    noValidatedAnalysis: "ದೃಢೀಕರಿಸಿದ ವಿಶ್ಲೇಷಣೆ ಇಲ್ಲ",
+    sourcedGis: "ಮೂಲ GIS ಇನ್‌ಪುಟ್ ಅಗತ್ಯವಿದೆ",
+    confidenceAccuracy: "ವಿಶ್ವಾಸಾರ್ಹತೆ ನಿಖರತೆ ಅಲ್ಲ",
+    noValidatedModel: "ದೃಢೀಕರಿಸಿದ ಮಾದರಿ ಇಲ್ಲ",
+    seeProvenance: "ಮಾದರಿ ಮೂಲವನ್ನು ನೋಡಿ",
+    latestData: "ಇತ್ತೀಚಿನ ಲಭ್ಯ ಡೇಟಾ",
+    unverifiedData: "ದೃಢೀಕರಿಸದ ಡೇಟಾ",
+    apiUnavailable: "ಡೆಮೊ ಡೇಟಾ · API ಲಭ್ಯವಿಲ್ಲ",
+    apiConnected: "ಡೆಮೊ ಡೇಟಾ · API ಸಂಪರ್ಕಗೊಂಡಿದೆ",
   },
 } as const;
 

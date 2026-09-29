@@ -1,9 +1,11 @@
 """Initialize the PostGIS schema and add explicitly labeled DEMO records."""
+from datetime import datetime, timedelta, timezone
+
 from sqlalchemy import text
 
 from backend.database import Base, SessionLocal, engine
 from backend.migrations import upgrade_legacy_schema
-from backend.models import FieldObservation, RechargeZone, Spring
+from backend.models import FieldObservation, RechargeZone, Spring, SpringMeasurement
 from geoalchemy2 import WKTElement
 
 
@@ -37,6 +39,11 @@ def main():
         for code, score, klass in DEMO_ZONES:
             if not db.query(RechargeZone).filter_by(zone_code=code).first():
                 db.add(RechargeZone(zone_code=code, suitability_score=score, suitability_class=klass, confidence=None, model_version=None, data_quality="SYNTHETIC", data_status="DEMO"))
+        jal_dhara = db.query(Spring).filter_by(spring_code="NG-001").first()
+        if jal_dhara and not db.query(SpringMeasurement).filter_by(spring_id=jal_dhara.id).first():
+            measurements = ((0.35, 1.45, 7.0), (0.42, 1.58, 7.1), (0.48, 1.66, 7.2))
+            for days_ago, (discharge, water_level, ph) in enumerate(measurements, start=2):
+                db.add(SpringMeasurement(spring_id=jal_dhara.id, discharge=discharge, water_level=water_level, water_quality_ph=ph, measured_at=datetime.now(timezone.utc) - timedelta(days=days_ago * 30), observer="DEMO SAMPLE", data_status="DEMO", notes="Synthetic monitoring record for prototype trend display."))
         db.commit()
     print("SpringVyra schema initialized. All inserted spring, observation, and suitability records are synthetic DEMO DATA; no real measurements or model confidence are asserted.")
 
