@@ -1,0 +1,12 @@
+"use client";
+
+import { useState } from "react";
+import { ArrowUp, Bot, ChevronDown, Sparkles, X } from "lucide-react";
+
+export function ChatAssistant() {
+  const [open, setOpen] = useState(false);
+  const [question, setQuestion] = useState("");
+  const [messages, setMessages] = useState<{ from: "assistant" | "user"; text: string }[]>([{ from: "assistant", text: "Namaste, Aditya! I can help you explore spring health, recharge priorities, or recent field observations across North Garhwal." }]);
+  function send() { if (!question.trim()) return; setMessages([...messages, { from: "user", text: question.trim() }, { from: "assistant", text: "I’m reviewing the latest watershed indicators. The dashboard currently shows 8 monitored springs and 4 priority recharge zones. Ask me about a specific spring or catchment." }]); setQuestion(""); }
+  return <>{open && <section className="chat-panel"><header><div className="chat-head-icon"><Bot size={18}/></div><div><b>SpringVyra assistant</b><span><i/> Watershed intelligence</span></div><button className="chat-close" onClick={()=>setOpen(false)} aria-label="Close assistant"><X size={17}/></button></header><div className="chat-intro"><span><Sparkles size={13}/> FIELD COPILOT</span><p>Ask about your watershed data</p></div><div className="chat-messages">{messages.map((m,i)=><div key={i} className={`chat-message ${m.from}`}>{m.from==="assistant"&&<span className="bot-avatar"><Bot size={14}/></span>}<p>{m.text}</p></div>)}</div><div className="chat-suggestions"><button onClick={()=>setQuestion("Which springs need attention?")}>Springs needing attention</button><button onClick={()=>setQuestion("Where are the best recharge sites?")}>Best recharge sites</button></div><form className="chat-input" onSubmit={e=>{e.preventDefault();send();}}><input value={question} onChange={e=>setQuestion(e.target.value)} placeholder="Ask about your watershed…"/><button aria-label="Send message"><ArrowUp size={17}/></button></form><small className="chat-note">AI insights are decision support, not field verification.</small></section>}<button className={`chat-launcher ${open?"chat-open":""}`} onClick={()=>setOpen(!open)} aria-label={open?"Close assistant":"Open SpringVyra assistant"}>{open?<ChevronDown size={20}/>:<><span className="launcher-sparkle"><Sparkles size={14}/></span><span>Ask SpringVyra</span><span className="launcher-badge">AI</span></>}</button></>;
+}
